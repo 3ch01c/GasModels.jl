@@ -9,6 +9,7 @@ import logging
 import traceback
 import geopy.distance
 
+JUNCTION_PROPS = ['pmin', 'pmax']
 MGC_PROPS = ['version', 'sound_speed', 'temperature', 'R', 'compressibility_factor', 'gas_molar_mass', 'gas_specific_gravity', 'specific_heat_capacity_ratio', 'standard_density', 'baseP', 'baseQ', 'per_unit']
 COMPONENT_NAMES = ['Junction', 'Pipe', 'Compressor', 'Resistor', 'Producer', 'Consumer', 'Generator', 'Storage']
 
@@ -123,8 +124,8 @@ class Dispatchable(Component):
 class Junction(Node):
     ''' A junction component '''
     collection_key = 'junctions'
-    pmax = 5515808 # maximum pressure. SI units are pascals
-    pmin = 3447380 # minimum pressure. SI units are pascals
+    pmax = 5.861e+6 # maximum pressure. SI units are pascals
+    pmin = 2.068e+6 # minimum pressure. SI units are pascals
     p = pmin # nominal pressure in pascal
     type = 0
 
@@ -589,7 +590,13 @@ class MGC:
                         assert(endpoints.get(f_junction) == 1), f'edge {edge._id} f_junction {f_junction} inactive'
                         assert(t_junction in endpoints), f'edge {edge._id} t_junction {t_junction} nonexistent'
                         assert(endpoints.get(t_junction) == 1), f'edge {edge._id} t_junction {t_junction} inactive'
-
+                if collection_key == "consumers":
+                    ''' For each consumer, check if fd = 0 then dispatchable = 0 '''
+                    for consumer in self.consumers:
+                        if consumer.qlmax == 0:
+                            assert(consumer.dispatchable == 0), f'consumer {consumer._id} should not be dispatchable'
+                        if consumer.qlmax == 1:
+                            assert(consumer.dispatchable == 1), f'consumer {consumer._id} should be dispatchable'
         except Exception as e:
             logging.debug(traceback.print_exc())
             logging.info(f'MGC invalid: {e}')
@@ -641,6 +648,9 @@ def csv2mgc(args):
     for prop in MGC_PROPS:
         if prop in args and getattr(args, prop) is not None:
             mgc_props[prop] = getattr(args, prop)
+    for prop in JUNCTION_PROPS:
+        if prop in args and getattr(args, prop) is not None:
+            setattr(Junction, prop, prop)
 
     return MGC.from_csv_files(component_files, mgc_props).to_matlab_document()
 
@@ -664,6 +674,8 @@ if __name__ == '__main__':
     parser.add_argument('--per_unit', help=f'Whether or not the file is in per unit (non dimensional units) or SI units.  Note that the only quantities that are non-dimensionalized are pressure and flux. (default: {MGC.per_unit})', action='store_const', const=1, default=MGC.per_unit)
     parser.add_argument('--baseQ', type=float, help=f'Base for non-dimensionalizing volumetric flow at standard density. (default: {MGC.baseQ} m^3/s)', default=MGC.baseQ)
     parser.add_argument('--baseP', type=float, help=f'Base for non-dimensionalizing pressure. (default: {MGC.baseP} Pa)', default=MGC.baseP)
+    parser.add_argument('--junction-pmin', type=float, help=f'Junction minimum pressure. (default: {Junction.pmin} Pa)', default=Junction.pmin)
+    parser.add_argument('--junction-pmax', type=float, help=f'Junction maximum pressure. (default: {Junction.pmax} Pa)', default=Junction.pmax)
     parser.add_argument('-v', '--verbosity', help='Increase output verbosity', action='count')
     parser.add_argument('-q', '--quiet', help='Suppress all log messages', action='store_const', const=0, dest='verbosity')
     args = parser.parse_args()
