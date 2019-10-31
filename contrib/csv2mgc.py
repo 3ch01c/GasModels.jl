@@ -185,7 +185,7 @@ class Consumer(Dispatchable):
             ql_junc = int(row['NEAR_FID'])
             qlmax = float(row['MAXCAP'])*(10**3)/(35.3147*86400) # kf^3/d to m^3/s
             ql = float(row['SCHEDCAP'])*(10**3)/(35.3147*86400) # kf^3/d to m^3/s
-            dispatchable = 0 if qlmax == 0 else 1
+            dispatchable = 0 if ql == 0 else 1
             return Consumer({'_id': _id,
                              'ql_junc': ql_junc,
                              'qlmax': qlmax,
@@ -581,22 +581,25 @@ class MGC:
                     assert(_id not in seen), f'{component_name} {_id} is duplicate'
                     seen.add(_id)
                 if collection_key == "pipelines":
-                    ''' For each pipeline, check endpoints exist and are active '''
+                    ''' Check endpoints exist and are active '''
                     endpoints = {junction._id: junction.status for junction in self.junctions}
                     for edge in self.pipes+self.compressors+self.resistors:
                         f_junction = edge.f_junction
                         t_junction = edge.t_junction
                         assert(f_junction in endpoints), f'{type(edge).__name__} {edge._id} f_junction {f_junction} nonexistent'
-                        assert(endpoints.get(f_junction) == 1), f'edge {edge._id} f_junction {f_junction} inactive'
-                        assert(t_junction in endpoints), f'edge {edge._id} t_junction {t_junction} nonexistent'
-                        assert(endpoints.get(t_junction) == 1), f'edge {edge._id} t_junction {t_junction} inactive'
+                        assert(endpoints.get(f_junction) == 1), f'{type(edge).__name__} {edge._id} f_junction {f_junction} inactive'
+                        assert(t_junction in endpoints), f'{type(edge).__name__} {edge._id} t_junction {t_junction} nonexistent'
+                        assert(endpoints.get(t_junction) == 1), f'{type(edge).__name__} {edge._id} t_junction {t_junction} inactive'
                 if collection_key == "consumers":
-                    ''' For each consumer, check if fd = 0 then dispatchable = 0 '''
+                    ''' Check dispatchable is set correctly '''
                     for consumer in self.consumers:
-                        if consumer.qlmax == 0:
-                            assert(consumer.dispatchable == 0), f'consumer {consumer._id} should not be dispatchable'
-                        if consumer.qlmax == 1:
-                            assert(consumer.dispatchable == 1), f'consumer {consumer._id} should be dispatchable'
+                        assert(consumer.dispatchable == 0 if consumer.ql == 0 else 1), f'{type(consumer).__name__} {consumer._id} should {"not" if consumer.dispatchable == 1 else ""} be dispatchable'
+                if collection_key == "generators":
+                    ''' Check dispatchable is set correctly '''
+                    for generator in self.generators:
+                        assert(generator.dispatchable == 0 if generator.qlmax == 0 else 1), f'{type(generator).__name__} {generator._id} should {"not" if generator.dispatchable == 1 else ""} not be dispatchable'
+                if collection_key == "junctions":
+                    ''' For each 
         except Exception as e:
             logging.debug(traceback.print_exc())
             logging.info(f'MGC invalid: {e}')
